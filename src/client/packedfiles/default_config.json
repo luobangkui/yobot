@@ -39,6 +39,7 @@
     "show_icp": false,
     "icp_info": "",
     "gongan_info": "",
+    "resource_path":"",
 
     "boss":{
         "jp": [

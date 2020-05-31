@@ -15,13 +15,82 @@ https://github.com/richardchien/nonebot
 '''
 
 import asyncio
+import random
+import os, re
+import logging
+import time
+import pytz
+from datetime import datetime, timedelta
+from collections import defaultdict
 from typing import Any, Dict, Union
 
 from aiocqhttp.api import Api
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from quart import Quart
 
+### 次数管理
+class FreqLimiter:
+    def __init__(self, default_cd_seconds):
+        self.next_time = defaultdict(float)
+        self.default_cd = default_cd_seconds
 
+    def check(self, key) -> bool:
+        return bool(time.time() >= self.next_time[key])
+
+    def start_cd(self, key, cd_time=0):
+        self.next_time[key] = time.time() + cd_time if cd_time > 0 else self.default_cd
+
+
+class DailyNumberLimiter:
+    tz = pytz.timezone('Asia/Shanghai')
+
+    def __init__(self, max_num):
+        self.today = -1
+        self.count = defaultdict(int)
+        self.max = max_num
+
+    def check(self, key) -> bool:
+        now = datetime.now(self.tz)
+        day = (now - timedelta(hours=5)).day
+        if day != self.today:
+            self.today = day
+            self.count.clear()
+        return bool(self.count[key] < self.max)
+
+    def get_num(self, key):
+        return self.count[key]
+
+    def increase(self, key, num=1):
+        self.count[key] += num
+
+    def reset(self, key):
+        self.count[key] = 0
+
+_max = 2
+EXCEED_NOTICE = f'您今天已经冲过{_max}次了，请明早5点后再来！'
+_nlmt = DailyNumberLimiter(_max)
+_flmt = FreqLimiter(5)
+
+
+
+SETU_PATH="/home/yobot/yobot/src/client/public/static/setu/"
+
+def setu_gener():
+    while True:
+        filelist = os.listdir(SETU_PATH)
+        random.shuffle(filelist)
+        for filename in filelist:
+            logging.warning(filename)
+            yield filename
+setu_gener = setu_gener()
+def get_setu():
+    return setu_gener.__next__()
+
+
+def getimg():
+    setu = get_setu()
+    s = "[CQ:image,file=http://182.92.106.116/yobot/assets/%s]"%setu
+    return s
 class Custom:
     def __init__(self,
                  glo_setting: Dict[str, Any],
@@ -43,7 +112,7 @@ class Custom:
         # 此时没有running_loop，不要直接使用await，请使用asyncio.ensure_future并指定loop=asyncio.get_event_loop()
 
         # 如果需要启用，请注释掉下面一行
-        return
+        #return
 
         # 这是来自yobot_config.json的设置，如果需要增加设置项，请修改default_config.json文件
         self.setting = glo_setting
@@ -70,17 +139,35 @@ class Custom:
         # 注意：这是一个异步函数，禁止使用阻塞操作（比如requests）
 
         # 如果需要使用，请注释掉下面一行
-        return
-
+        #return
         cmd = ctx['raw_message']
-        if cmd == '你好':
-
+        pattern = '不够[涩瑟色]|[涩瑟色]图|来一?[点份张].*[涩瑟色]|再来[点份张]|看过了|铜'
+        if re.match(pattern, cmd, 0) != None:
+            s = getimg()
             # 调用api发送消息，详见cqhttp文档
-            await self.api.send_private_msg(
-                user_id=123456, message='收到问好')
+            try:
+                await self.api.send_group_msg(
+                        group_id=ctx['group_id'],
+                        message=s,
+                    )
+            except Exception as e:
+                logging.warning(e)
+                return "sorry，涩图太涩了，不好意思往外发"
+            uid = ctx['user_id']
+            if not _nlmt.check(uid):
+                return EXCEED_NOTICE
+            if not _flmt.check(uid):
+                return '您冲得太快了，请稍候再冲'
+            _flmt.start_cd(uid)
+            _nlmt.increase(uid)
+            logging.warning(s)
 
-            # 返回字符串：发送消息并阻止后续插件
-            return '世界'
+        # 返回字符串：发送消息并阻止后续插件
+            return '给你，拿去冲'
 
         # 返回布尔值：是否阻止后续插件（返回None视作False）
-        return False
+        return True
+
+
+
+
