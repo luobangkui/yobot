@@ -144,6 +144,14 @@ class Custom:
         pattern = '不够[涩瑟色]|[涩瑟色]图|来一?[点份张].*[涩瑟色]|再来[点份张]|看过了|铜'
         if re.match(pattern, cmd, 0) != None:
             s = getimg()
+            uid = ctx['user_id']
+            if not _nlmt.check(uid):
+                return EXCEED_NOTICE
+            if not _flmt.check(uid):
+                return '您冲得太快了，请稍候再冲'
+            _flmt.start_cd(uid)
+            _nlmt.increase(uid)
+            logging.warning(s)
             # 调用api发送消息，详见cqhttp文档
             try:
                 await self.api.send_group_msg(
@@ -153,14 +161,6 @@ class Custom:
             except Exception as e:
                 logging.warning(e)
                 return "sorry，涩图太涩了，不好意思往外发"
-            uid = ctx['user_id']
-            if not _nlmt.check(uid):
-                return EXCEED_NOTICE
-            if not _flmt.check(uid):
-                return '您冲得太快了，请稍候再冲'
-            _flmt.start_cd(uid)
-            _nlmt.increase(uid)
-            logging.warning(s)
 
         # 返回字符串：发送消息并阻止后续插件
             return '给你，拿去冲'
